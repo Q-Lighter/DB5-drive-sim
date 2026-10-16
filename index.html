@@ -235,6 +235,7 @@ input[type=color]{width:54px;height:28px;padding:0;border:1px solid var(--line);
         <label for="carName">Entry name</label>
         <input type="text" id="carName" maxlength="14" value="APEX GT" spellcheck="false" />
         <span class="menuHint">Click or press 1–4 · ESC returns to menu</span>
+        <button class="btn" id="saveCopy" title="Download your own copy of this single file">Save a copy</button>
       </div>
     </div>
   </div>
@@ -724,16 +725,52 @@ fillLight.position.set(-60, 40, 70);
 scene.add(fillLight);
 
 /* ============================ 4. THE CIRCUIT ============================ */
-var TRACK_HALF = 6.4;                 // half width of the racing surface
+/* ===========================================================================
+   TURBOFORGE INTERNATIONAL - a Silverstone-inspired 3,340-unit circuit.
+   Section order follows the real lap: Hamilton Start/Finish Straight, Abbey
+   (fast right) and Farm (fast left), Village onto the Wellington Straight,
+   Brooklands (left kink) and the Luffield hairpin, Copse (fast right), the
+   Maggotts / Becketts / Chapel esses, the Hangar Straight, then Stowe's heavy
+   braking right into Vale and Club.  Every corner radius is >= 52 units so the
+   whole lap is drivable on an 18-unit-wide surface.
+   =========================================================================== */
+var TRACK_HALF = 9.0;                 // half width of the racing surface
+var TRACK_STATS = { kerbSamples: 0, kerbTris: 0, runoffMeshes: 0, kerbHeight: 0 };
+var ROAD_Y = 0.08;                    // road ribbon sits clear of the grass
 var MT = [
-  [-200, 0], [-60, 0], [60, 0], [150, 0],
-  [205, -18], [236, -62], [243, -118],
-  [226, -168], [188, -205], [140, -203], [101, -169], [87, -129],
-  [58, -113],
-  [10, -139], [-38, -109], [-84, -133],
-  [-146, -109], [-198, -75], [-228, -31], [-214, -6]
+  /* Hamilton Start/Finish Straight (heading +x) */
+  [-200, 0], [-40, 0], [120, 0], [265, 0],
+  /* Abbey - fast right */
+  [340, 22], [430, 92], [500, 196],
+  /* Farm - fast left */
+  [534, 312], [546, 432],
+  /* Village - right onto the Wellington Straight */
+  [522, 548], [460, 648],
+  /* Wellington Straight */
+  [352, 730], [190, 788], [15, 820], [-158, 828],
+  /* Brooklands - left kink */
+  [-290, 814],
+  /* Luffield - long right hairpin */
+  [-400, 770], [-486, 694], [-534, 598],
+  /* Copse - fast right */
+  [-546, 502],
+  /* Maggotts / Becketts / Chapel - the rapid-fire esses */
+  [-557, 463], [-558, 437], [-555, 412], [-559, 399], [-555, 374], [-556, 349],
+  /* Hangar Straight */
+  [-566, 312], [-575, 250], [-575, 180], [-575, 110],
+  /* Stowe - heavy braking right */
+  [-560, 62], [-524, 16], [-480, -14],
+  /* Vale - left, then Club - right back onto the start/finish straight */
+  [-420, -28], [-330, -24]
 ];
-var PIT_PTS = [[-108, 6.6], [-78, 10.2], [-40, 13.0], [0, 13.6], [42, 13.2], [78, 10.6], [104, 6.6]];
+/* named corners, used to place kerbs and run-off areas */
+var ZONE = {
+  Abbey: [430, 92], Village: [522, 548], Brooklands: [-290, 814],
+  Luffield: [-486, 694], Copse: [-546, 502], Maggotts: [-557, 463],
+  Becketts: [-559, 399], Chapel: [-556, 349], Stowe: [-560, 62],
+  Vale: [-480, -14], Club: [-330, -24]
+};
+var PIT_PTS = [[-172, 15.6], [-104, 20.2], [-30, 22.4], [46, 22.8], [116, 21.4], [180, 17.8], [232, 12.8]];
 
 var SAMP = [], TANG = [], RIGH = [], INSIDE = [], CURV = [], KERB = [];
 var TRACK_LEN = 0, SEG = 1, N = 0;
@@ -866,43 +903,131 @@ function buildCircuit() {
   }
 
   /* tarmac, run-off apron and painted boundary lines */
-  grp.add(ribbon(-(TRACK_HALF + 16), TRACK_HALF + 16, 0.004,
-    new THREE.MeshStandardMaterial({ color: 0x4d4f52, roughness: 0.97, metalness: 0.02 }), 20));
-  grp.add(ribbon(-TRACK_HALF, TRACK_HALF, 0.02,
-    new THREE.MeshStandardMaterial({ map: noiseTex('#33363b', 1, 0.05, true), color: 0xb6bcc4, roughness: 0.36, metalness: 0.10 }), 8));
-  var white = new THREE.MeshStandardMaterial({ color: 0xf4f7fb, roughness: 0.52, metalness: 0.0 });
-  grp.add(ribbon(TRACK_HALF - 0.34, TRACK_HALF - 0.05, 0.028, white, 6));
-  grp.add(ribbon(-TRACK_HALF + 0.05, -TRACK_HALF + 0.34, 0.028, white, 6));
+  /* the run-off apron sits just below the road so nothing ever z-fights */
+  grp.add(ribbon(-(TRACK_HALF + 16), TRACK_HALF + 16, 0.030,
+    new THREE.MeshStandardMaterial({ color: 0x474a4e, roughness: 0.97, metalness: 0.02 }), 20));
+  /* the tarmac road ribbon itself, raised clear of the grass */
+  grp.add(ribbon(-TRACK_HALF, TRACK_HALF, ROAD_Y,
+    new THREE.MeshStandardMaterial({ map: noiseTex('#2b2e33', 1, 0.05, true), color: 0x9ba1a9, roughness: 0.85, metalness: 0.06 }), 8));
+  /* continuous painted white boundary lines along both outer edges */
+  var white = new THREE.MeshStandardMaterial({ color: 0xf4f7fb, roughness: 0.5, metalness: 0.0 });
+  grp.add(ribbon(TRACK_HALF - 0.42, TRACK_HALF - 0.06, ROAD_Y + 0.007, white, 6));
+  grp.add(ribbon(-TRACK_HALF + 0.06, -TRACK_HALF + 0.42, ROAD_Y + 0.007, white, 6));
 
-  /* ---- kerbs: alternating red / white, inside apexes and outside exits ---- */
-  var kp = [], kc = [], ki = [], nv = 0, prevI = -5;
-  var RED = [0.86, 0.11, 0.15], WHI = [0.94, 0.95, 0.96];
-  for (i = 0; i < N; i++) {
-    if (KERB[i] === 0) { continue; }
-    /* KERB > 0 -> right-hand corner, inside is the car's right; KERB < 0 -> outside of a right-hander */
-    var cnt = (KERB[i] > 0) ? INSIDE[i] : RIGH[i];
-    var p = SAMP[i];
-    var ax = p.x + cnt.x * (TRACK_HALF + 0.02), az = p.z + cnt.z * (TRACK_HALF + 0.02);
-    var bx = p.x + cnt.x * (TRACK_HALF + 1.9), bz = p.z + cnt.z * (TRACK_HALF + 1.9);
-    var c = ((i - prevI) % 2 === 0) ? RED : WHI;
-    kp.push(ax, 0.035, az, bx, 0.035, bz);
-    kc.push(c[0], c[1], c[2], c[0], c[1], c[2]);
-    nv += 2;
-    if (prevI === i - 1) {
-      var a0 = nv - 4, b0 = nv - 3, a1 = nv - 2, b1 = nv - 1;
-      ki.push(a0, a1, b0, b0, a1, b1);
+  /* ---- 3D bevelled rumble kerbs ------------------------------------------
+     Real geometry, not a painted strip: each kerb has a chamfered inner edge
+     that meets the tarmac flush, a raised crown, and an outer lip that drops
+     back down to the grass.  Alternating red / white bands, and they follow
+     every apex (inside) and every corner exit (outside). */
+  (function buildKerbs() {
+    var RED = [0.88, 0.105, 0.14], WHI = [0.95, 0.96, 0.965];
+    var XS = [                                   /* [lateral offset, height] */
+      [TRACK_HALF + 0.02, ROAD_Y + 0.012],       /* inner edge, flush         */
+      [TRACK_HALF + 0.42, ROAD_Y + 0.105],       /* chamfer back up           */
+      [TRACK_HALF + 1.62, ROAD_Y + 0.155],       /* crown                     */
+      [TRACK_HALF + 1.94, ROAD_Y + 0.155],       /* outer lip                 */
+      [TRACK_HALF + 1.94, 0.005]                 /* outer face to the grass   */
+    ];
+    var pos = [], col = [], idx = [], v = 0, prevStart = -1, prevI = -99, i2, k3, q;
+    for (i2 = 0; i2 < N; i2++) {
+      if (KERB[i2] === 0) { prevI = -99; continue; }
+      var cnt = (KERB[i2] > 0) ? INSIDE[i2] : RIGH[i2];
+      var pp = SAMP[i2];
+      var c2 = (((i2 / 3) | 0) % 2 === 0) ? RED : WHI;
+      var start = v;
+      for (k3 = 0; k3 < XS.length; k3++) {
+        pos.push(pp.x + cnt.x * XS[k3][0], XS[k3][1], pp.z + cnt.z * XS[k3][0]);
+        col.push(c2[0], c2[1], c2[2]);
+        v++;
+      }
+      if (prevI === i2 - 1) {
+        for (q = 0; q < XS.length - 1; q++) {
+          var a0 = prevStart + q, b0 = prevStart + q + 1, a1 = start + q, b1 = start + q + 1;
+          idx.push(a0, a1, b0, b0, a1, b1);
+        }
+      }
+      prevStart = start; prevI = i2;
+      TRACK_STATS.kerbSamples++;
     }
-    prevI = i;
+    TRACK_STATS.kerbTris = idx.length / 3;
+    /* real vertical extent of the kerb geometry, measured from the vertices
+       actually emitted (outer foot up to the crown) */
+    var kLo = Infinity, kHi = -Infinity;
+    for (i2 = 1; i2 < pos.length; i2 += 3) {
+      if (pos[i2] < kLo) { kLo = pos[i2]; }
+      if (pos[i2] > kHi) { kHi = pos[i2]; }
+    }
+    TRACK_STATS.kerbHeight = isFinite(kHi - kLo) ? (kHi - kLo) : 0;
+    if (idx.length) {
+      var kg = new THREE.BufferGeometry();
+      kg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      kg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      kg.setIndex(idx);
+      kg.computeVertexNormals();
+      var km = new THREE.Mesh(kg, new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: 0.62, metalness: 0.04, side: THREE.DoubleSide
+      }));
+      km.receiveShadow = true; km.castShadow = true;
+      grp.add(km);
+    }
+  })();
+
+  /* ---- tarmac and gravel run-off on the outside of the quick corners ---- */
+  function sampleAt(x, z) {
+    var b = 0, bd = Infinity, i3, dx, dz, d;
+    for (i3 = 0; i3 < N; i3++) {
+      dx = SAMP[i3].x - x; dz = SAMP[i3].z - z; d = dx * dx + dz * dz;
+      if (d < bd) { bd = d; b = i3; }
+    }
+    return b;
   }
-  if (ki.length) {
-    var kg = new THREE.BufferGeometry();
-    kg.setAttribute('position', new THREE.Float32BufferAttribute(kp, 3));
-    kg.setAttribute('color', new THREE.Float32BufferAttribute(kc, 3));
-    kg.setIndex(ki);
-    kg.computeVertexNormals();
-    var km = new THREE.Mesh(kg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.03, side: THREE.DoubleSide }));
-    km.receiveShadow = true;
-    grp.add(km);
+  function runOff(x, z, span, o1, o2, y, mat, uvScale) {
+    var c = sampleAt(x, z), pos = [], nor = [], uv = [], idx = [], n = 0, j;
+    for (j = -span; j <= span; j++) {
+      var i4 = ((c + j) % N + N) % N;
+      var o = (CURV[i4] < 0) ? -1 : 1;              /* outside of the corner */
+      var r = RIGH[i4], p = SAMP[i4];
+      var a = o1 * o, b = o2 * o;
+      pos.push(p.x + r.x * a, y, p.z + r.z * a);
+      pos.push(p.x + r.x * b, y, p.z + r.z * b);
+      nor.push(0, 1, 0, 0, 1, 0);
+      uv.push(0, j / (uvScale || 3), 1, j / (uvScale || 3));
+      n++;
+    }
+    for (j = 0; j < n - 1; j++) {
+      var q0 = j * 2, q1 = j * 2 + 1, q2 = (j + 1) * 2, q3 = (j + 1) * 2 + 1;
+      idx.push(q0, q2, q1, q1, q2, q3);
+    }
+    var g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    var m2 = new THREE.Mesh(g, mat);
+    m2.receiveShadow = true;
+    return m2;
+  }
+  var runTarmac = new THREE.MeshStandardMaterial({
+    map: noiseTex('#3d4045', 1, 0.05, true), color: 0xa8adb4, roughness: 0.88, metalness: 0.05 });
+  var runGravel = new THREE.MeshStandardMaterial({
+    map: noiseTex('#6b6353', 1, 0.10, false), color: 0xa89d84, roughness: 1, metalness: 0 });
+  /* Copse, Becketts and Stowe get the widest gravel - they are the quick ones */
+  var RUNOFF = [
+    [ZONE.Copse[0],    ZONE.Copse[1],    30, 1],
+    [ZONE.Becketts[0], ZONE.Becketts[1], 24, 1],
+    [ZONE.Maggotts[0], ZONE.Maggotts[1], 16, 1],
+    [ZONE.Chapel[0],   ZONE.Chapel[1],   16, 1],
+    [ZONE.Stowe[0],    ZONE.Stowe[1],    32, 1],
+    [ZONE.Luffield[0], ZONE.Luffield[1], 22, 1],
+    [ZONE.Brooklands[0], ZONE.Brooklands[1], 18, 1],
+    [ZONE.Abbey[0],    ZONE.Abbey[1],    20, 1],
+    [ZONE.Club[0],     ZONE.Club[1],     20, 1]
+  ];
+  for (var zi = 0; zi < RUNOFF.length; zi++) {
+    var zz = RUNOFF[zi];
+    grp.add(runOff(zz[0], zz[1], zz[2], TRACK_HALF + 2.0, TRACK_HALF + 8.5, 0.055, runTarmac, 4));
+    grp.add(runOff(zz[0], zz[1], zz[2], TRACK_HALF + 8.5, TRACK_HALF + 16.0, 0.048, runGravel, 3));
+    TRACK_STATS.runoffMeshes += 2;
   }
 
   /* ---- Armco barriers along the outside of the quick corners ---- */
@@ -1697,6 +1822,7 @@ Vehicle.prototype.resetState = function () {
   this.sampIdx = 0; this.pitIdx = -1; this.pathIdx = -1; this.roll = 0; this.pitch = 0;
   this.latG = 0; this.longG = 0; this.spinDrive = 0; this.lockedAny = 0;
   this.smokeAmt = 0; this.squeal = 0; this.shiftT = 0; this.pitLimited = false;
+  this.stopT = 0; this.suspF = 0; this.suspR = 0; this.aFl = 0; this.aRl = 0;
 };
 
 Vehicle.prototype.place = function (x, z, yaw) {
@@ -1714,31 +1840,50 @@ Vehicle.prototype.sync = function () {
 Vehicle.prototype.wearGrip = function (w) { return 0.58 + 0.42 * Math.pow(clamp(w, 0, 1), 0.6); };
 Vehicle.prototype.wearBrake = function (w) { return 0.60 + 0.40 * Math.pow(clamp(w, 0, 1), 0.7); };
 
+/* A real tyre curve: stiff, near-linear bite, a defined peak, then a gentle
+   progressive fall-off rather than a hard clamp.  This is what makes the car
+   grip immediately on turn-in but still let go predictably when overloaded. */
+function tyreForce(alpha, peak, kStiff, drop) {
+  var a = Math.abs(alpha);
+  var stiff = kStiff * peak;      /* N/rad, scales with load like a real tyre */
+  var peakA = 1 / kStiff;         /* slip angle at which the tyre peaks       */
+  var f;
+  if (a <= peakA) { f = stiff * a; }
+  else { f = peak * (1 - drop * (1 - Math.exp(-(a - peakA) * 7))); }
+  return alpha > 0 ? -f : f;      /* lateral force always opposes the slip */
+}
+
 Vehicle.prototype.step = function (dt, ctrl) {
   var s = this.spec, m = s.mass, i;
   /* the pit road is paved too: only real run-off costs grip */
   var rough = this.offTrack && !this.onPit;
-  var surface = rough ? 0.52 : (this.onKerb ? 0.88 : 1.0);
-
-  /* steering: speed sensitive limit + rate limit */
+  var surface = rough ? 0.52 : (this.onKerb ? 0.90 : 1.0);
   var speedAbs = Math.abs(this.vLong);
-  var lim = 0.60 / (1 + speedAbs * 0.030);
-  var rate = (ctrl.steer === 0) ? 7.0 : 4.2;
-  this.steer += clamp(ctrl.steer * lim - this.steer, -rate * dt, rate * dt);
 
-  /* gearbox */
+  /* ---------------- steering ------------------------------------------------
+     Speed-sensitive lock so the car never snaps at 100+ mph, and fast caster
+     self-alignment: release the stick or the key and the wheels snap back. */
+  var lockCap = 0.62 / (1 + speedAbs * 0.058);
+  var want = ctrl.steer * lockCap;
+  var rate = (ctrl.steer === 0) ? (11.0 + speedAbs * 0.10) : 5.2;
+  this.steer += clamp(want - this.steer, -rate * dt, rate * dt);
+
+  /* ---------------- gearbox ---------------- */
   var gearRat = s.gears[this.gear] * s.finalDrive;
   var revs = speedAbs / (2 * Math.PI * s.wheelR) * 60 * gearRat;
   if (this.shiftT > 0) { this.shiftT -= dt; }
   if (this.shiftT <= 0) {
-    if (this.gear < 5 && revs > s.redline * 0.965) { this.gear++; this.shiftT = 0.14; }
+    if (this.gear < 5 && revs > s.redline * 0.965) {
+      this.gear++; this.shiftT = 0.14;
+      if (!this.isAI && !this.isGhost) { audio.shiftCut(); }
+    }
     else if (this.gear > 0 && revs < s.redline * 0.44) { this.gear--; this.shiftT = 0.12; }
     gearRat = s.gears[this.gear] * s.finalDrive;
     revs = speedAbs / (2 * Math.PI * s.wheelR) * 60 * gearRat;
   }
   this.rpm = clamp(revs, 900, s.redline);
 
-  /* turbo spool */
+  /* ---------------- turbo spool ---------------- */
   if (s.turbo) {
     var bTarget = clamp((this.rpm - s.redline * 0.28) / (s.redline * 0.55), 0, 1) * ctrl.throttle;
     var lag = Math.max(0.08, s.lag * (1 + s.boostPsi * 0.012));
@@ -1747,50 +1892,56 @@ Vehicle.prototype.step = function (dt, ctrl) {
   } else { this.boostState = 0; }
   var boostNow = 1 + (s.boostMul - 1) * this.boostState;
 
-  /* engine torque -> drive force */
+  /* ---------------- engine torque -> drive force ---------------- */
   var torque = s.naTorque * torqueShape(this.rpm, s.redline) * boostNow;
   if (this.shiftT > 0) { torque *= 0.15; }
   var limiter = (this.rpm >= s.redline - 40 && ctrl.throttle > 0.2) ? 0 : 1;
   var driveN = torque * gearRat * s.driveEff / s.wheelR * ctrl.throttle * limiter;
   if (this.pitLimited && this.vLong > 16.4) { driveN = 0; }
 
-  /* axle loads with weight transfer + downforce */
+  /* ---------------- axle loads: longitudinal transfer + downforce ---------------- */
   var W = m * 9.81;
-  var Wf = Math.max(300, W * s.b / s.L - m * this.axS * s.h / s.L + s.dfF * speedAbs * speedAbs);
-  var Wr = Math.max(300, W * s.a / s.L + m * this.axS * s.h / s.L + s.dfR * speedAbs * speedAbs);
-  var gripF = this.wearGrip((this.tires[0].wear + this.tires[1].wear) * 0.5);
-  var gripR = this.wearGrip((this.tires[2].wear + this.tires[3].wear) * 0.5);
-  var muF = s.mu * gripF * surface, muR = s.mu * gripR * surface;
+  var transfer = m * this.axS * s.h / s.L;
+  var Wf = Math.max(300, W * s.b / s.L - transfer + s.dfF * speedAbs * speedAbs);
+  var Wr = Math.max(300, W * s.a / s.L + transfer + s.dfR * speedAbs * speedAbs);
+  var wearF = (this.tires[0].wear + this.tires[1].wear) * 0.5;
+  var wearR = (this.tires[2].wear + this.tires[3].wear) * 0.5;
+  var muF = s.mu * this.wearGrip(wearF) * surface;
+  var muR = s.mu * this.wearGrip(wearR) * surface;
+  var maxLatF = muF * Wf, maxLatR = muR * Wr;
 
-  /* brakes and lock-up */
+  /* ---------------- brakes and lock-up ---------------- */
   var brakeT = s.brakes * ctrl.brake;
   var demF = brakeT * s.brakeBias / s.wheelR, demR = brakeT * (1 - s.brakeBias) / s.wheelR;
-  var capF = muF * Wf * this.wearBrake((this.tires[0].wear + this.tires[1].wear) * 0.5);
-  var capR = muR * Wr * this.wearBrake((this.tires[2].wear + this.tires[3].wear) * 0.5);
-  var lockingF = demF > capF * 1.05, lockingR = demR > capR * 1.05;
-  var brakeF = lockingF ? capF * 0.80 : demF;
-  var brakeR = lockingR ? capR * 0.80 : demR;
+  var capF = maxLatF * this.wearBrake(wearF), capR = maxLatR * this.wearBrake(wearR);
+  var lockingF = demF > capF * 1.02, lockingR = demR > capR * 1.02;
+  var brakeF = lockingF ? capF * 0.82 : demF;
+  var brakeR = lockingR ? capR * 0.82 : demR;
   var movingFast = this.vLong > 2.5;
   this.tires[0].locked = this.tires[1].locked = lockingF && movingFast;
   this.tires[2].locked = this.tires[3].locked = lockingR && movingFast;
   this.lockedAny = (lockingF || lockingR) && movingFast ? 1 : 0;
 
-  /* lateral forces: bicycle model inside a friction circle */
-  var vden = Math.max(speedAbs, 1.4);
-  var aF = Math.atan2(this.vLat + this.yawRate * s.a, vden) - this.steer;
+  /* ---------------- lateral forces: bicycle model + friction circle ---------------- */
+  var vden = Math.max(speedAbs, 1.2);
+  var aF = Math.atan2(this.vLat + this.yawRate * s.a, vden) + this.steer;
   var aR = Math.atan2(this.vLat - this.yawRate * s.b, vden);
   this.tires[0].slip = this.tires[1].slip = Math.abs(aF) * speedAbs;
   this.tires[2].slip = this.tires[3].slip = Math.abs(aR) * speedAbs;
-  var Cf = 10.5 * muF * Wf, Cr = 13.0 * muR * Wr;
-  var maxLatF = muF * Wf, maxLatR = muR * Wr;
+  var relax = 1 - Math.exp(-dt / 0.045);
+  this.aFl += (aF - this.aFl) * relax;
+  this.aRl += (aR - this.aRl) * relax;
+  var capLatF = maxLatF;
   var fxR = Math.min(Math.abs(brakeR + driveN * s.split[1]), maxLatR * 0.97);
-  var capLatF = maxLatF, capLatR = Math.sqrt(Math.max(1, maxLatR * maxLatR - fxR * fxR));
-  var Fyf = clamp(-Cf * aF, -capLatF, capLatF);
-  var Fyr = clamp(-Cr * aR, -capLatR, capLatR);
-  if (this.tires[0].locked) { Fyf *= 0.22; }
-  if (this.tires[2].locked) { Fyr *= 0.22; }
+  var capLatR = Math.sqrt(Math.max(1, maxLatR * maxLatR - fxR * fxR));
+  /* kStiff = 17 puts the peak at a 3.4 degree slip angle: the tyre bites the
+     instant you turn in, then lets go progressively rather than snapping. */
+  var Fyf = clamp(tyreForce(this.aFl, capLatF, 17.0, 0.40), -capLatF, capLatF);
+  var Fyr = clamp(tyreForce(this.aRl, capLatR, 17.0, 0.40), -capLatR, capLatR);
+  if (this.tires[0].locked) { Fyf *= 0.20; }   /* a locked wheel cannot steer */
+  if (this.tires[2].locked) { Fyr *= 0.20; }
 
-  /* differential */
+  /* ---------------- differential ---------------- */
   var load = clamp(Math.abs(this.yawRate * this.vLong) / 9.81, 0, 1.4);
   var diffTraction = 1, diffYaw = 0;
   if (s.diff === 'open') { diffTraction = 1 - 0.26 * load; }
@@ -1798,7 +1949,7 @@ Vehicle.prototype.step = function (dt, ctrl) {
   else { diffTraction = 1 - 0.26 * load * (1 - s.diffLock); diffYaw = -14.0 * s.diffLock * this.yawRate; }
   diffTraction = clamp(diffTraction, 0.5, 1);
 
-  /* traction limit on the driven axle(s) -> wheelspin */
+  /* ---------------- traction limit on the driven axle(s) -> wheelspin ---------------- */
   var demandF = driveN * s.split[0], demandR = driveN * s.split[1];
   var availF = muF * Wf * diffTraction, availR = muR * Wr * diffTraction;
   var spinF = 0, spinR = 0;
@@ -1806,43 +1957,64 @@ Vehicle.prototype.step = function (dt, ctrl) {
   if (demandR > availR) { spinR = clamp((demandR - availR) / Math.max(availR, 1), 0, 2); demandR = availR; }
   this.spinDrive = Math.max(spinF, spinR);
 
-  /* longitudinal balance */
+  /* ---------------- longitudinal balance ---------------- */
   var Fx = demandF + demandR;
   if (ctrl.throttle < 0.05 && this.vLong > 1) { Fx -= s.naTorque * 0.12 * gearRat / s.wheelR; }
-  if (this.vLong > 0.2) { Fx -= brakeF + brakeR; }
-  else if (ctrl.brake > 0.05 && ctrl.throttle < 0.05) {
-    Fx -= torque * 0.5 * s.gears[0] * s.finalDrive * s.driveEff / s.wheelR * ctrl.brake;
+
+  /* Service brakes resist the current motion; they can never reverse the car.
+     Only once the car is genuinely stopped does the pedal become reverse gear -
+     and from that moment on it drives the car backwards instead of braking it.
+     Leaving the brakes applied would let them fight the reverse torque, so the
+     car would only ever crawl backwards instead of backing up. */
+  var brakeForce = brakeF + brakeR;
+  var stoppedLongEnough = false;
+  if (!this.isAI && this.vLong < 0.6 && ctrl.brake > 0.15 && ctrl.throttle < 0.05) {
+    this.stopT += dt;
+    stoppedLongEnough = this.stopT > 0.10;
+  } else { this.stopT = 0; }
+  if (stoppedLongEnough) {
+    if (this.vLong > -12) {
+      Fx -= torque * 0.55 * s.gears[0] * s.finalDrive * s.driveEff / s.wheelR * ctrl.brake;
+    }
+  } else if (Math.abs(this.vLong) > 0.2) {
+    Fx -= (this.vLong > 0 ? 1 : -1) * Math.min(brakeForce, Math.abs(this.vLong) * m / Math.max(dt, 1e-4));
   }
+
   Fx -= 0.5 * 1.2 * s.cdA * this.vLong * Math.abs(this.vLong);
-  Fx -= 0.013 * m * 9.81 * (rough ? 3.2 : 1.0) * Math.sign(this.vLong);
+  Fx -= 0.013 * m * 9.81 * (rough ? 3.2 : 1.0) * (this.vLong > 0 ? 1 : (this.vLong < 0 ? -1 : 0));
   if (Math.abs(this.vLong) < 0.25 && ctrl.throttle < 0.02 && ctrl.brake < 0.02) {
     Fx *= 0.15;
     if (Math.abs(this.vLong) < 0.05) { this.vLong = 0; }
   }
   if (ctrl.handbrake) {
-    Fx -= Math.sign(this.vLong) * Math.min(Math.abs(this.vLong) * m * 2.4, 5200);
+    Fx -= (this.vLong > 0 ? 1 : (this.vLong < 0 ? -1 : 0)) * Math.min(Math.abs(this.vLong) * m * 2.4, 5200);
     Fyr *= 0.25;
   }
 
-  /* integrate in the body frame */
+  /* ---------------- integrate in the body frame ---------------- */
   var sumFy = Fyf * Math.cos(this.steer) + Fyr + diffYaw;
   var Mz = s.a * Fyf * Math.cos(this.steer) - s.b * Fyr;
   var axl = (Fx - Fyf * Math.sin(this.steer)) / m + this.vLat * this.yawRate;
   var ayl = sumFy / m - this.vLong * this.yawRate;
-  this.axS = smooth(this.axS, Fx / m, dt, 6);
+  /* weight transfer tracks the real longitudinal acceleration, with lag */
+  this.axS = smooth(this.axS, Fx / m, dt, 9);
   this.vLong = clamp(this.vLong + axl * dt, -16, 150);
   this.vLat = clamp(this.vLat + ayl * dt, -40, 40);
   this.yawRate += (Mz / s.Izz) * dt;
-  this.yawRate *= Math.exp(-0.6 * dt);
+  /* yaw damping grows with speed: no directional instability under heavy braking */
+  this.yawRate *= Math.exp(-(0.6 + clamp(speedAbs * 0.007, 0, 1.4)) * dt);
   this.yaw += this.yawRate * dt;
-  this.latG = Math.abs(this.yawRate * this.vLong) / 9.81;
+  /* lateral g as the tyres actually generate it: sumFy/m is the total
+     side acceleration in the body frame, so this can never read above the
+     grip the tyres have. */
+  this.latG = Math.abs(sumFy) / (m * 9.81);
   this.longG = Math.abs(axl) / 9.81;
 
   var sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
   this.pos.x += (sy * this.vLong + cy * this.vLat) * dt;
   this.pos.z += (cy * this.vLong - sy * this.vLat) * dt;
 
-  /* tyre wear */
+  /* ---------------- tyre wear ---------------- */
   var dist = speedAbs * dt;
   for (i = 0; i < 4; i++) {
     var t = this.tires[i];
@@ -1855,10 +2027,17 @@ Vehicle.prototype.step = function (dt, ctrl) {
     t.wear = clamp(t.wear, 0, 1);
   }
 
-  /* visual attitude */
+  /* ---------------- visual attitude: load-driven pitch and roll ----------------
+     Hard braking puts weight on the nose, so the front compresses and the car
+     dives; hard acceleration squats the rear and lifts the nose. */
   this.spin -= (this.vLong / s.wheelR) * dt * (this.tires[2].locked ? 0.06 : 1);
-  this.roll = smooth(this.roll, clamp(-(this.yawRate * this.vLong) * 0.013, -0.14, 0.14), dt, 8);
-  this.pitch = smooth(this.pitch, clamp(-(Fx / m) * 0.0032, -0.05, 0.05), dt, 8);
+  var rollG = (this.yawRate * this.vLong);
+  this.roll = smooth(this.roll, clamp(-rollG * 0.013, -0.15, 0.15), dt, 9);
+  var pitchTarget = clamp((Wf - Wr) / W * 0.115, -0.055, 0.080);
+  this.pitch = smooth(this.pitch, pitchTarget, dt, 10);
+  this.suspF = smooth(this.suspF, clamp((Wf / (W * s.b / s.L) - 1) * 0.10, -0.06, 0.09), dt, 12);
+  this.suspR = smooth(this.suspR, clamp((Wr / (W * s.a / s.L) - 1) * 0.10, -0.06, 0.09), dt, 12);
+
   this.smokeAmt = Math.max(
     this.lockedAny * clamp(speedAbs / 14, 0, 1),
     clamp(this.spinDrive, 0, 1),
@@ -1988,9 +2167,19 @@ function dropSkid(veh, i) {
   skidMesh.instanceMatrix.needsUpdate = true;
 }
 
-/* ============================ 10. AUDIO ============================ */
+/* ============================ 10. AUDIO ============================
+   Every sound is synthesised at run time - no samples, no external files.
+   ENGINE: a bank of oscillators locked to the cylinder firing order, driven
+   through a low-pass filter that opens up under throttle and shuts down to a
+   low idle purr the moment you lift.  Pitch tracks rpm through the gearbox,
+   so each upshift audibly drops the note.
+   TYRES: a looping white-noise buffer through a swept band-pass.  Gain and
+   centre frequency both climb with slip angle, so a small slide is a light
+   scrub and a locked-wheel moment is a full scream.
+   Locked wheels also add a low rumble so you can hear a lock-up coming.
+   ========================================================================== */
 var audio = {
-  ctx: null, on: true, ready: false,
+  ctx: null, on: true, ready: false, cyl: 8, mute: 0,
   init: function () {
     if (this.ready) { return; }
     var AC = window.AudioContext || window.webkitAudioContext;
@@ -1998,55 +2187,150 @@ var audio = {
     try {
       var ctx = new AC();
       this.ctx = ctx;
+      if (ctx.state === 'suspended' && ctx.resume) { ctx.resume(); }
+
       this.master = ctx.createGain();
-      this.master.gain.value = this.on ? 0.5 : 0;
+      this.master.gain.value = this.on ? 0.55 : 0;
       this.master.connect(ctx.destination);
-      this.engineGain = ctx.createGain(); this.engineGain.gain.value = 0;
+
+      /* ---- engine: oscillators -> low-pass -> exhaust formant -> master ---- */
+      this.engineBus = ctx.createGain();
+      this.engineBus.gain.value = 0;
       this.engineFilter = ctx.createBiquadFilter();
-      this.engineFilter.type = 'lowpass'; this.engineFilter.frequency.value = 1800;
-      this.engineGain.connect(this.engineFilter); this.engineFilter.connect(this.master);
+      this.engineFilter.type = 'lowpass';
+      this.engineFilter.frequency.value = 700;
+      this.engineFilter.Q.value = 3.2;
+      this.formant = ctx.createBiquadFilter();
+      this.formant.type = 'peaking';
+      this.formant.frequency.value = 380;
+      this.formant.Q.value = 1.5;
+      this.formant.gain.value = 9;
+      this.engineBus.connect(this.engineFilter);
+      this.engineFilter.connect(this.formant);
+      this.formant.connect(this.master);
+
       this.osc = [];
-      var mults = [1, 0.5, 2, 3.02, 0.25];
-      var gains = [0.5, 0.45, 0.18, 0.10, 0.35];
-      for (var i = 0; i < mults.length; i++) {
-        var o = ctx.createOscillator();
-        o.type = (i === 3) ? 'square' : (i === 0 ? 'sawtooth' : 'triangle');
-        o.frequency.value = 60 * mults[i];
-        var g = ctx.createGain(); g.gain.value = gains[i];
-        o.connect(g); g.connect(this.engineGain);
+      var HARM = [
+        [0.5, 'triangle', 0.32],
+        [1.0, 'sawtooth', 0.55],
+        [1.5, 'triangle', 0.22],
+        [2.0, 'sawtooth', 0.28],
+        [3.0, 'square',   0.14],
+        [4.03, 'sawtooth', 0.11],
+        [6.01, 'sawtooth', 0.06]
+      ];
+      var i, o, g;
+      for (i = 0; i < HARM.length; i++) {
+        o = ctx.createOscillator();
+        o.type = HARM[i][1];
+        o.frequency.value = 40 * HARM[i][0];
+        g = ctx.createGain();
+        g.gain.value = HARM[i][2];
+        o.connect(g); g.connect(this.engineBus);
         o.start();
-        this.osc.push({ o: o, mult: mults[i] });
+        this.osc.push({ o: o, mult: HARM[i][0], g: g, base: HARM[i][2] });
       }
+
+      /* looping white noise, reused by both the induction rasp and the tyres */
       var len = Math.floor(ctx.sampleRate * 2);
       var buf = ctx.createBuffer(1, len, ctx.sampleRate);
       var d = buf.getChannelData(0);
-      for (var k = 0; k < len; k++) { d[k] = Math.random() * 2 - 1; }
-      this.noise = ctx.createBufferSource();
-      this.noise.buffer = buf; this.noise.loop = true;
+      for (i = 0; i < len; i++) { d[i] = Math.random() * 2 - 1; }
+      this.noiseBuf = buf;
+
+      /* induction rasp - only really audible on throttle */
+      this.rasp = ctx.createBufferSource();
+      this.rasp.buffer = buf; this.rasp.loop = true;
+      this.raspFilter = ctx.createBiquadFilter();
+      this.raspFilter.type = 'bandpass';
+      this.raspFilter.frequency.value = 950;
+      this.raspFilter.Q.value = 0.9;
+      this.raspGain = ctx.createGain();
+      this.raspGain.gain.value = 0;
+      this.rasp.connect(this.raspFilter);
+      this.raspFilter.connect(this.raspGain);
+      this.raspGain.connect(this.master);
+      this.rasp.start();
+
+      /* tyre screech: noise -> swept band-pass -> gain */
+      this.tyre = ctx.createBufferSource();
+      this.tyre.buffer = buf; this.tyre.loop = true;
       this.sqFilter = ctx.createBiquadFilter();
-      this.sqFilter.type = 'bandpass'; this.sqFilter.frequency.value = 2100; this.sqFilter.Q.value = 3.2;
-      this.sqGain = ctx.createGain(); this.sqGain.gain.value = 0;
-      this.noise.connect(this.sqFilter); this.sqFilter.connect(this.sqGain); this.sqGain.connect(this.master);
-      this.noise.start();
+      this.sqFilter.type = 'bandpass';
+      this.sqFilter.frequency.value = 1900;
+      this.sqFilter.Q.value = 4.2;
+      this.sqGain = ctx.createGain();
+      this.sqGain.gain.value = 0;
+      this.sqLow = ctx.createBiquadFilter();
+      this.sqLow.type = 'lowpass';
+      this.sqLow.frequency.value = 7000;
+      this.tyre.connect(this.sqFilter);
+      this.sqFilter.connect(this.sqGain);
+      this.sqGain.connect(this.sqLow);
+      this.sqLow.connect(this.master);
+      this.tyre.start();
+
+      /* locked-wheel rumble */
+      this.lockOsc = ctx.createOscillator();
+      this.lockOsc.type = 'square';
+      this.lockOsc.frequency.value = 62;
+      this.lockGain = ctx.createGain();
+      this.lockGain.gain.value = 0;
+      this.lockOsc.connect(this.lockGain);
+      this.lockGain.connect(this.master);
+      this.lockOsc.start();
+
       this.ready = true;
     } catch (e) { this.ready = false; }
   },
-  update: function (rpm, throttle, squeal) {
+
+  /* rpm, throttle, squeal (0..1), gear, cylinders, locked (0..1) */
+  update: function (rpm, throttle, squeal, gear, cyl, locked) {
     if (!this.ready) { return; }
     if (!this.on) {
-      if (this.engineGain) { this.engineGain.gain.value = 0; }
+      if (this.engineBus) { this.engineBus.gain.value = 0; }
       if (this.sqGain) { this.sqGain.gain.value = 0; }
+      if (this.raspGain) { this.raspGain.gain.value = 0; }
+      if (this.lockGain) { this.lockGain.gain.value = 0; }
       return;
     }
-    var f = (rpm / 60) * 2, i;
+    var i, n = (cyl || this.cyl || 8);
+    /* firing note: two orders per revolution, with a little base so idle rumbles */
+    var f = 26 + (rpm / 60) * 2;
+    /* more cylinders = denser harmonic stack */
+    var dense = clamp((n - 4) / 8, 0, 1);
     for (i = 0; i < this.osc.length; i++) {
-      this.osc[i].o.frequency.value = clamp(f * this.osc[i].mult, 18, 4200);
+      var osc = this.osc[i];
+      osc.o.frequency.value = clamp(f * osc.mult, 16, 5200);
+      var weight = osc.base * (1 + dense * (osc.mult - 1) * 0.30);
+      osc.g.gain.value = Math.max(0, weight);
     }
-    this.engineGain.gain.value = 0.022 + throttle * 0.070 + Math.min(rpm / 9000, 1) * 0.045;
-    this.engineFilter.frequency.value = 700 + rpm * 0.28 + throttle * 900;
-    this.sqGain.gain.value = squeal * 0.10;
-    this.sqFilter.frequency.value = 1500 + squeal * 1600;
+    /* throttle opens the filter: a roar at full load, a purr off it */
+    var load = clamp(throttle, 0, 1);
+    var cut = 420 + rpm * 0.30 + load * 2600;
+    this.engineFilter.frequency.value = clamp(cut, 260, 7200);
+    this.formant.frequency.value = clamp(300 + rpm * 0.09, 180, 1600);
+    this.engineBus.gain.value = (0.020 + load * 0.078 + Math.min(rpm / 9000, 1) * 0.048) * (1 - this.mute * 0.8);
+    this.raspGain.gain.value = load * (0.012 + Math.min(rpm / 9000, 1) * 0.020);
+    this.raspFilter.frequency.value = clamp(700 + rpm * 0.22, 400, 5200);
+
+    /* tyres: only make a sound once they are actually sliding */
+    var sq = clamp(squeal, 0, 1);
+    var onset = Math.max(0, (sq - 0.06) / 0.94);
+    this.sqGain.gain.value = onset * 0.115;
+    this.sqFilter.frequency.value = 1350 + onset * 2100;
+    this.sqFilter.Q.value = 3.4 + onset * 2.4;
+
+    /* locked-wheel rumble */
+    var lk = clamp(locked || 0, 0, 1);
+    this.lockGain.gain.value = lk * 0.030;
+    this.lockOsc.frequency.value = 52 + lk * 40;
   },
+
+  /* brief throttle-cut so gearshifts read clearly */
+  shiftCut: function () { var self = this; if (!this.ready) { return; }
+    this.mute = 1; setTimeout(function () { self.mute = 0; }, 70); },
+
   beep: function (freq, dur, vol) {
     if (!this.ready || !this.on) { return; }
     try {
@@ -2059,7 +2343,11 @@ var audio = {
       o.stop(this.ctx.currentTime + dur + 0.03);
     } catch (e) { /* ignore */ }
   },
-  setOn: function (on) { this.on = on; if (this.master) { this.master.gain.value = on ? 0.5 : 0; } }
+  setOn: function (on) {
+    this.on = on;
+    if (this.master) { this.master.gain.value = on ? 0.55 : 0; }
+    if (on && this.ctx && this.ctx.state === 'suspended' && this.ctx.resume) { this.ctx.resume(); }
+  }
 };
 
 /* ============================ 11. CARS ============================ */
@@ -2069,6 +2357,17 @@ var ghostCar = new Vehicle({ ghost: true, color: 0x49c9ff });
 ghostCar.root.visible = false;
 
 var START_IDX = (N - 14 + N) % N;
+/* sample index at the middle of the Hangar Straight - the camera opens the FOV
+   there, where the car is flat out with the throttle pinned */
+var HANGAR_IDX = (function () {
+  var best = 0, bd = Infinity, i, dx, dz, d;
+  var tx = (ZONE.Maggotts[0] + ZONE.Stowe[0]) * 0.5, tz = (ZONE.Maggotts[1] + ZONE.Stowe[1]) * 0.5;
+  for (i = 0; i < N; i++) {
+    dx = SAMP[i].x - tx; dz = SAMP[i].z - tz; d = dx * dx + dz * dz;
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best;
+})();
 
 function gridSlot(idx, offset, veh) {
   var p = SAMP[idx], r = RIGH[idx];
@@ -2146,8 +2445,10 @@ function driveAI(veh, line, aggression) {
   var tgt = line[(li + 1) % n];
   var dx = tgt.x - veh.pos.x, dz = tgt.z - veh.pos.z;
   var dist = Math.hypot(dx, dz) || 1;
+  /* heading error in yaw terms; positive means the target line is to the
+     driver's LEFT, and a negative steer command is what turns us left */
   var err = wrapPi(Math.atan2(dx / dist, dz / dist) - veh.yaw);
-  aiCtrl.steer = clamp(err * 2.1, -1, 1);
+  aiCtrl.steer = clamp(-err * 2.1, -1, 1);
   var targetV = tgt.v * aggression;
   var vErr = targetV - veh.vLong;
   aiCtrl.throttle = clamp(vErr * 0.6, 0, 1);
@@ -2527,12 +2828,14 @@ function readInput(dt) {
   if (gp) {
     if (!padConnected) { padConnected = true; setPadChip(); }
     var ax = gp.axes[0] || 0;
-    if (Math.abs(ax) < 0.14) { ax = 0; }
-    tSteer = ax;
+    if (Math.abs(ax) < 0.10) { ax = 0; }
+    tSteer = ax;                    /* left stick left = negative = steer left */
     var rt = gp.buttons[7] ? (gp.buttons[7].value !== undefined ? gp.buttons[7].value : (gp.buttons[7].pressed ? 1 : 0)) : 0;
     var lt = gp.buttons[6] ? (gp.buttons[6].value !== undefined ? gp.buttons[6].value : (gp.buttons[6].pressed ? 1 : 0)) : 0;
     throttle = clamp(rt, 0, 1);
     brake = clamp(lt, 0, 1);
+    /* the first button press is what unlocks WebAudio (autoplay policy) */
+    for (i = 0; i < gp.buttons.length; i++) { if (gp.buttons[i] && gp.buttons[i].pressed) { audio.init(); break; } }
     if (gp.buttons[0] && gp.buttons[0].pressed) { hb = true; }
     if (gp.buttons[3] && gp.buttons[3].pressed && !prevResetBtn) { onKeyPress('KeyR'); }
     prevResetBtn = !!(gp.buttons[3] && gp.buttons[3].pressed);
@@ -2599,6 +2902,7 @@ function updateHUD(dt) {
   /* timing */
   HUD.curLap.textContent = race.running ? fmtTime(race.t0 > 0 ? clock - race.t0 : 0) : '--:--.---';
   HUD.lastLap.textContent = fmtTime(race.lastLap);
+  HUD.bestLap.textContent = race.bestLap > 0 ? fmtTime(race.bestLap) : '--:--.---';
   HUD.lapCount.textContent = String(race.lapCount);
   HUD.s1.textContent = fmtTime(race.curSect[0], true);
   HUD.s2.textContent = fmtTime(race.curSect[1], true);
@@ -3034,7 +3338,14 @@ function updateCamera(dt) {
   shakeAmt = smooth(shakeAmt, target, dt, 7);
   camera.position.y += (Math.random() - 0.5) * shakeAmt;
   camera.position.x += (Math.random() - 0.5) * shakeAmt * 0.6;
-  var fovTarget = (camMode === 'hood' ? 74 : 62 + clamp(speed * 0.32, 0, 15)) + (player.offTrack ? 2 : 0);
+  /* Dynamic FOV: it grows with speed everywhere, and stretches further on the
+     Hangar Straight where the car is flat out for the longest time. */
+  var dh = Math.abs(player.sampIdx - HANGAR_IDX);
+  dh = Math.min(dh, N - dh);
+  var onHangar = clamp(1 - dh / 80, 0, 1);
+  var fovTarget = (camMode === 'hood' ? 74 : 62 + clamp(speed * 0.32, 0, 15))
+    + onHangar * clamp(speed * 0.17, 0, 9)
+    + (player.offTrack ? 2 : 0);
   camera.fov = smooth(camera.fov, fovTarget, dt, 3.5);
   camera.updateProjectionMatrix();
 }
@@ -3053,7 +3364,9 @@ function frame() {
   if (race.mode === 'race' || race.mode === 'timetrial') {
     readInput(dt);
     h = dt / SUBSTEPS;
-    var line = (race.bestRec.length > 3) ? race.bestRec : AI_LINE;
+    /* the rival always races the computed line (with its corner speeds);
+       only the ghost car replays the player's own recorded lap */
+    var line = AI_LINE;
     for (i = 0; i < SUBSTEPS; i++) {
       player.step(h, ctrl);
       if (rival.root.visible) { rival.step(h, driveAI(rival, line, 0.985)); }
@@ -3083,7 +3396,8 @@ function frame() {
       dropSkid(player, 2); dropSkid(player, 3);
       if (player.lockedAny) { dropSkid(player, 0); dropSkid(player, 1); }
     }
-    audio.update(player.rpm, ctrl.throttle, Math.min(1, player.squeal));
+    audio.update(player.rpm, ctrl.throttle, Math.min(1, player.squeal),
+      player.gear, player.spec.cyl, player.lockedAny);
     updateCamera(dt);
 
   } else if (race.mode === 'replay') {
@@ -3125,6 +3439,29 @@ function frame() {
 }
 
 /* ============================ 21. BOOT ============================ */
+/* ---- single-file export: hand the player their own copy of the game ----
+   Everything lives in one document, so serialising the live DOM gives a
+   complete, stand-alone index.html back - useful when the file arrived in a
+   browser panel rather than on disk. */
+function saveCopy() {
+  try {
+    var doc = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+    var blob = new Blob([doc], { type: 'text/html' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = 'index.html';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () {
+      if (a.parentNode) { a.parentNode.removeChild(a); }
+      if (URL.revokeObjectURL) { URL.revokeObjectURL(url); }
+    }, 1500);
+    toast('SAVED A COPY AS index.html');
+  } catch (e) {
+    toast('THIS BROWSER BLOCKED THE SAVE — COPY FROM THE FILES PANEL', 'amber');
+  }
+}
+
 function bindUI() {
   var items = document.querySelectorAll('.mitem'), i;
   for (i = 0; i < items.length; i++) {
@@ -3134,6 +3471,7 @@ function bindUI() {
   byId('devBack').addEventListener('click', function () { setScreen('menu'); });
   byId('hudMenu').addEventListener('click', function () { setScreen('menu'); });
   byId('hudMute').addEventListener('click', function () { toggleMute(); });
+  byId('saveCopy').addEventListener('click', function () { saveCopy(); });
   byId('repPlay').addEventListener('click', function () {
     replay.playing = !replay.playing;
     this.textContent = replay.playing ? 'Pause' : 'Play';
@@ -3178,6 +3516,13 @@ window.TF = {
   DEV: DEV, deriveSpec: deriveSpec, runDyno: runDyno, estimate: estimate,
   player: player, rival: rival, ghost: ghostCar, race: race, ctrl: ctrl, keys: keys,
   SAMP: SAMP, AI_LINE: AI_LINE, PITBOX: PITBOX, PIT: PIT, N: N, TRACK_HALF: TRACK_HALF,
+  ROAD_Y: ROAD_Y, ZONE: ZONE, MT: MT, KERB: KERB, CURV: CURV, TRACK_LEN: TRACK_LEN,
+  HANGAR_IDX: HANGAR_IDX, START_IDX: START_IDX, scene: scene, camera: camera,
+  TRACK_STATS: TRACK_STATS, SEG: SEG, TANG: TANG, RIGH: RIGH, CURV: CURV,
+  updateCamera: function (dt) { updateCamera(dt); },
+  getCamMode: function () { return camMode; },
+  getScreen: function () { return race.mode; },
+  driveAI: function (veh, line, agg) { return driveAI(veh, line, agg); },
   launch: launch, setScreen: setScreen, beginReplay: beginReplay, replay: replay,
   startSession: startSession, updateTrackState: updateTrackState, board: board,
   audio: audio, toast: toast, selectStep: selectStep, onDevChange: onDevChange,
